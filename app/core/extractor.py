@@ -16,7 +16,7 @@ class MuExtractor:
     @staticmethod
     def _extract_text(
             args,
-    ):
+    ) -> dict:
         file_path, pg_num, eng_numbering = args
         with fitz.open(file_path) as doc:
             pg_txt = doc.get_page_text(pg_num)
@@ -33,7 +33,7 @@ class MuExtractor:
             self,
             max_workers: int = 64,
             eng_numbering: bool = True,
-    ):
+    ) -> list[dict]:
         results = []
 
         for i in range(0, self.page_count, max_workers):

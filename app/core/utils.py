@@ -10,7 +10,7 @@ TRANSLATE_TABLE = {**ARABIC_INDIC_MAP, **PERSIAN_MAP}
 def normalize_digits_and_fix_order(
         text: str,
         eng_numbering: bool = False,
-):
+) -> str:
     normalizeed_text = re.sub(
         r'[\u0660-\u0669\u06F0-\u06F9/]+',
         lambda m: m.group(0)[::-1],
