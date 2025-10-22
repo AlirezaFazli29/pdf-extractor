@@ -121,12 +121,13 @@ async def extract_text_mu(
             eng_numbering=eng_numbering,
         )
 
-    return JSONResponse(
-        {
+        response = {
             "source": "uploaded file",
+            "metadata": extractor.get_metadata(),
             "pages": results,
         }
-    )
+
+    return JSONResponse(content=response)
 
 
 @app.post(
@@ -180,12 +181,13 @@ async def extract_text_url_mu(
             eng_numbering=eng_numbering,
         )
 
-        return JSONResponse(
-        {
-            "source": url,
+        response = {
+            "source": "url",
+            "metadata": extractor.get_metadata(),
             "pages": results,
         }
-    )
+
+    return JSONResponse(response)
 
 
 @app.post(
@@ -223,10 +225,11 @@ async def extract_text_base64_mu(
             eng_numbering=eng_numbering,
         )
 
-    return JSONResponse(
-        {
+        response = {
             "source": "base64 input",
+            "metadata": extractor.get_metadata(),
             "pages": results,
         }
-    )
+
+    return JSONResponse(content=response)
 

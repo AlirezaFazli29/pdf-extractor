@@ -57,3 +57,10 @@ class MuExtractor:
         results.sort(key=lambda x: x["page_number"])
 
         return results
+    
+    def get_metadata(
+            self,
+    ) -> dict:
+        with fitz.open(self.file_path) as doc:
+            metadata = doc.metadata
+        return metadata
