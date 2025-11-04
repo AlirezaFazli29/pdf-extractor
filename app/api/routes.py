@@ -131,6 +131,48 @@ async def extract_text_mu(
 
 
 @app.post(
+    path="/extract_image_mu/",
+    tags=[
+        "PyMuPDF",
+    ]
+)
+async def extract_image_mu(
+    file: UploadFile = File(...),
+    max_workers: int = Form(32),
+):
+    if file.content_type != "application/pdf":
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file type. Only PDF file allowed."
+        )
+    
+    with tempfile.NamedTemporaryFile(
+        delete=True, suffix=".pdf",
+    ) as tmp:
+        content = await file.read()
+
+        if not content.startswith(b"%PDF"):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid PDF file",
+            )
+        
+        tmp.write(content)
+        tmp.flush()
+
+        extractor = MuExtractor(file_path=tmp.name)
+        results = extractor.extract_image(max_workers=max_workers)
+
+        response = {
+            "source": "uploaded file",
+            "metadata": extractor.get_metadata(),
+            "pages": results,
+        }
+
+    return JSONResponse(content=response)
+
+
+@app.post(
     path="/extract_text_url_mu/",
     tags=[
         "PyMuPDF",
@@ -191,6 +233,63 @@ async def extract_text_url_mu(
 
 
 @app.post(
+    path="/extract_image_url_mu/",
+    tags=[
+        "PyMuPDF",
+    ]
+)
+async def extract_image_url_mu(
+    url: str = Form(...),
+    max_workers: int = Form(32),
+):
+    try:
+        async with httpx.AsyncClient(
+            timeout=30.0
+        ) as client:
+            response = await client.get(url)
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Could not fetch file from URL: {response.reason_phrase}",
+                )
+            content = response.content
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Request error: {e}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {e}",
+        )
+    
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+    
+    with tempfile.NamedTemporaryFile(
+        delete=True, suffix=".pdf",
+    ) as tmp:
+        tmp.write(content)
+        tmp.flush()
+
+        extractor = MuExtractor(file_path=tmp.name)
+        results = extractor.extract_image(max_workers=max_workers)
+
+        response = {
+            "source": "url",
+            "metadata": extractor.get_metadata(),
+            "pages": results,
+        }
+
+    return JSONResponse(response)
+
+
+
+@app.post(
     path="/extract_text_base64_mu/",
     tags=["PyMuPDF"]
 )
@@ -233,3 +332,42 @@ async def extract_text_base64_mu(
 
     return JSONResponse(content=response)
 
+
+@app.post(
+    path="/extract_image_base64_mu/",
+    tags=["PyMuPDF"]
+)
+async def extract_image_base64_mu(
+    base64_pdf: str = Form(...),
+    max_workers: int = Form(32),
+):
+    try:
+        content = base64.b64decode(base64_pdf)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+
+    with tempfile.NamedTemporaryFile(
+        delete=True, suffix=".pdf",
+    ) as tmp:
+        tmp.write(content)
+        tmp.flush()
+
+        extractor = MuExtractor(file_path=tmp.name)
+        results = extractor.extract_image(max_workers=max_workers)
+
+        response = {
+            "source": "base64 input",
+            "metadata": extractor.get_metadata(),
+            "pages": results,
+        }
+
+    return JSONResponse(content=response)
