@@ -1,7 +1,9 @@
+import os
 import fitz
 import httpx
 import base64
 import tempfile
+from tika import parser
 from fastapi import File, Form
 from fastapi.responses import JSONResponse
 from fastapi import FastAPI, UploadFile, HTTPException
@@ -10,6 +12,7 @@ from ..core.extractor import (
 )
 
 
+TIKA_URL = os.getenv("TIKA_URL", "http://localhost:9998")
 app = FastAPI(title="PDF Extractor")
 
 
@@ -25,7 +28,8 @@ async def root():
             "message": "Service is up and running",
             "supported models":
             [
-                "PyMuPDF"
+                "PyMuPDF",
+                "Apache Tika",
             ]
         }
     )
@@ -71,6 +75,32 @@ async def mu_health_check():
             status_code=200,
             content={
                 "status": doc,
+            }
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "detail": str(e),
+            }
+        )
+    
+
+@app.get(
+    path="/tika_health/",
+    tags=[
+        "Health",
+        "Apache Tika",
+    ]
+)
+async def tika_health_check():
+    try:
+        state = httpx.get(os.path.join(TIKA_URL, "tika"))
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": state.text.replace(" Please PUT\n", "").strip(),
             }
         )
     except Exception as e:
@@ -288,10 +318,11 @@ async def extract_image_url_mu(
     return JSONResponse(response)
 
 
-
 @app.post(
     path="/extract_text_base64_mu/",
-    tags=["PyMuPDF"]
+    tags=[
+        "PyMuPDF",
+    ]
 )
 async def extract_text_base64_mu(
     base64_pdf: str = Form(...),
@@ -335,7 +366,9 @@ async def extract_text_base64_mu(
 
 @app.post(
     path="/extract_image_base64_mu/",
-    tags=["PyMuPDF"]
+    tags=[
+        "PyMuPDF",
+    ]
 )
 async def extract_image_base64_mu(
     base64_pdf: str = Form(...),
@@ -369,5 +402,115 @@ async def extract_image_base64_mu(
             "metadata": extractor.get_metadata(),
             "pages": results,
         }
+
+    return JSONResponse(content=response)
+
+
+@app.post(
+    path="/extract_text_tika/",
+    tags=[
+        "Apache Tika",
+    ]
+)
+async def extract_text_tika(
+    file: UploadFile = File(...),
+):
+    _, ext = os.path.splitext(file.filename)
+    if not ext:
+        ext = ""
+    
+    with tempfile.NamedTemporaryFile(
+        delete=True, suffix=".pdf",
+    ) as tmp:
+        content = await file.read()
+        tmp.write(content)
+        tmp.flush()
+
+        parsed_doc = parser.from_file(
+            tmp.name,
+            serverEndpoint=TIKA_URL,
+        )
+
+        response = {
+            "source": "uploaded file",
+            "metadata": parsed_doc.get("metadata"),
+            "content": parsed_doc.get("content"),
+        }
+
+    return JSONResponse(content=response)
+
+
+@app.post(
+    path="/extract_text_url_tika/",
+    tags=[
+        "Apache Tika",
+    ]
+)
+async def extract_text_url_tika(
+    url: str = Form(...),
+):
+    try:
+        async with httpx.AsyncClient(
+            timeout=30.0
+        ) as client:
+            response = await client.get(url)
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Could not fetch file from URL: {response.reason_phrase}",
+                )
+            content = response.content
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Request error: {e}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {e}",
+        )
+    
+    parsed_doc = parser.from_buffer(
+        content,
+        serverEndpoint=TIKA_URL,
+    )
+
+    response = {
+        "source": "url",
+        "metadata": parsed_doc.get("metadata"),
+        "pages": parsed_doc.get("content"),
+    }
+
+    return JSONResponse(response)
+
+
+@app.post(
+    path="/extract_text_base64_tika/",
+    tags=[
+        "Apache Tika",
+    ]
+)
+async def extract_text_base64_tika(
+    base64_pdf: str = Form(...),
+):
+    try:
+        content = base64.b64decode(base64_pdf)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+
+    parsed_doc = parser.from_buffer(
+        content,
+        serverEndpoint=TIKA_URL,
+    )
+
+    response = {
+        "source": "url",
+        "metadata": parsed_doc.get("metadata"),
+        "pages": parsed_doc.get("content"),
+    }
 
     return JSONResponse(content=response)
