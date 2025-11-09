@@ -10,6 +10,7 @@ from fastapi import FastAPI, UploadFile, HTTPException
 from ..core.extractor import (
     MuExtractor
 )
+from ..core.utils import digits_to_latin
 
 
 TIKA_URL = os.getenv("TIKA_URL", "http://localhost:9998")
@@ -414,6 +415,7 @@ async def extract_image_base64_mu(
 )
 async def extract_text_tika(
     file: UploadFile = File(...),
+    eng_numbering: bool = Form(False),
 ):
     _, ext = os.path.splitext(file.filename)
     if not ext:
@@ -431,10 +433,14 @@ async def extract_text_tika(
             serverEndpoint=TIKA_URL,
         )
 
+        content = digits_to_latin(
+            parsed_doc.get("content")
+        ) if eng_numbering else parsed_doc.get("content")
+
         response = {
             "source": "uploaded file",
             "metadata": parsed_doc.get("metadata"),
-            "content": parsed_doc.get("content"),
+            "content": content,
         }
 
     return JSONResponse(content=response)
@@ -448,6 +454,7 @@ async def extract_text_tika(
 )
 async def extract_text_url_tika(
     url: str = Form(...),
+    eng_numbering: bool = Form(False),
 ):
     try:
         async with httpx.AsyncClient(
@@ -476,10 +483,14 @@ async def extract_text_url_tika(
         serverEndpoint=TIKA_URL,
     )
 
+    content = digits_to_latin(
+        parsed_doc.get("content")
+    ) if eng_numbering else parsed_doc.get("content")
+
     response = {
-        "source": "url",
+        "source": "uploaded file",
         "metadata": parsed_doc.get("metadata"),
-        "pages": parsed_doc.get("content"),
+        "content": content,
     }
 
     return JSONResponse(response)
@@ -493,6 +504,7 @@ async def extract_text_url_tika(
 )
 async def extract_text_base64_tika(
     base64_pdf: str = Form(...),
+    eng_numbering: bool = Form(False),
 ):
     try:
         content = base64.b64decode(base64_pdf)
@@ -507,10 +519,14 @@ async def extract_text_base64_tika(
         serverEndpoint=TIKA_URL,
     )
 
+    content = digits_to_latin(
+        parsed_doc.get("content")
+    ) if eng_numbering else parsed_doc.get("content")
+
     response = {
-        "source": "url",
+        "source": "uploaded file",
         "metadata": parsed_doc.get("metadata"),
-        "pages": parsed_doc.get("content"),
+        "content": content,
     }
 
     return JSONResponse(content=response)
