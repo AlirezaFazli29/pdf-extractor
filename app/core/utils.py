@@ -1,7 +1,6 @@
 import re
 
 
-
 def normalize_digits_and_fix_order(
         text: str,
         eng_numbering: bool = False,
@@ -16,6 +15,7 @@ def normalize_digits_and_fix_order(
         normalizeed_text = digits_to_latin(normalizeed_text)
 
     return normalizeed_text
+
 
 def digits_to_latin(text: str):
     # Maps for Arabic-Indic and Eastern Arabic-Indic (Persian) digits -> Western digits
