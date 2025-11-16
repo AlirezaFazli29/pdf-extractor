@@ -5,18 +5,21 @@ import PyPDF2
 import base64
 import tempfile
 from tika import parser
-from fastapi import File, Form
-from fastapi.responses import JSONResponse
-from fastapi import FastAPI, UploadFile, HTTPException
 from ..core.extractor import (
     MuExtractor,
+    OCRExtractor,
     PyPDFExtractor,
 )
+from fastapi import File, Form
+from .schemas import LanguageOCR
 from ..core.utils import digits_to_latin
+from fastapi.responses import JSONResponse
+from pytesseract import get_tesseract_version
+from fastapi import FastAPI, UploadFile, HTTPException
 
 
 TIKA_URL = os.getenv("TIKA_URL", "http://localhost:9998")
-app = FastAPI(title="PDF Extractor")
+app = FastAPI(title="Document Extractor")
 
 
 @app.get(
@@ -32,8 +35,9 @@ async def root():
             "supported models":
             [
                 "PyMuPDF",
-                "PyPDF2"
+                "PyPDF2",
                 "Apache Tika",
+                "Tesseract OCR",
             ]
         }
     )
@@ -131,6 +135,32 @@ async def tika_health_check():
             status_code=200,
             content={
                 "status": state.text.replace(" Please PUT\n", "").strip(),
+            }
+        )
+    except Exception as e:
+        return JSONResponse(
+            status_code=500,
+            content={
+                "status": "error",
+                "detail": str(e),
+            }
+        )
+
+
+@app.get(
+    path="/tesseract_health/",
+    tags=[
+        "Health",
+        "Tesseract OCR",
+    ]
+)
+async def tesseract_health():
+    try:
+        version = get_tesseract_version().__str__()
+        return JSONResponse(
+            status_code=200,
+            content={
+                "status": f"Using pytesseract version {version} as the ocr core",
             }
         )
     except Exception as e:
@@ -709,5 +739,160 @@ async def extract_text_base64_tika(
         "metadata": parsed_doc.get("metadata"),
         "content": content,
     }
+
+    return JSONResponse(content=response)
+
+
+@app.post(
+    path="/extract_text_tesseract/",
+    tags=[
+        "Tesseract OCR",
+    ]
+)
+async def extract_text_tesseract(
+    file: UploadFile = File(...),
+    max_workers: int = Form(32),
+    eng_numbering: bool = Form(False),
+    language: LanguageOCR = Form(LanguageOCR.Farsi.value),
+):
+    if file.content_type != "application/pdf":
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid file type. Only PDF file allowed."
+        )
+
+    with tempfile.NamedTemporaryFile(
+        delete=True, suffix=".pdf",
+    ) as tmp:
+        content = await file.read()
+
+        if not content.startswith(b"%PDF"):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid PDF file",
+            )
+        
+        tmp.write(content)
+        tmp.flush()
+
+        extractor = OCRExtractor(file_path=tmp.name)
+        results = extractor.extract_text(
+            max_workers=max_workers,
+            lang=language.value,
+            eng_numbering=eng_numbering,
+        )
+
+        response = {
+            "source": "uploaded file",
+            "pages": results,
+        }
+
+    return JSONResponse(content=response)
+
+
+@app.post(
+    path="/extract_text_url_tesseract/",
+    tags=[
+        "Tesseract OCR",
+    ]
+)
+async def extract_text_url_tesseract(
+    url: str = Form(...),
+    max_workers: int = Form(32),
+    eng_numbering: bool = Form(False),
+    language: LanguageOCR = Form(LanguageOCR.Farsi.value),
+):
+    try:
+        async with httpx.AsyncClient(
+            timeout=30.0
+        ) as client:
+            response = await client.get(url)
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Could not fetch file from URL: {response.reason_phrase}",
+                )
+            content = response.content
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Request error: {e}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {e}",
+        )
+    
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+    
+    with tempfile.NamedTemporaryFile(
+        delete=True, suffix=".pdf",
+    ) as tmp:
+        tmp.write(content)
+        tmp.flush()
+
+        extractor = OCRExtractor(file_path=tmp.name)
+        results = extractor.extract_text(
+            max_workers=max_workers,
+            lang=language.value,
+            eng_numbering=eng_numbering,
+        )
+
+        response = {
+            "source": "url",
+            "pages": results,
+        }
+
+    return JSONResponse(response)
+
+
+@app.post(
+    path="/extract_text_base64_tesseract/",
+    tags=[
+        "Tesseract OCR",
+    ]
+)
+async def extract_text_base64_tesseract(
+    base64_pdf: str = Form(...),
+    max_workers: int = Form(32),
+    eng_numbering: bool = Form(False),
+    language: LanguageOCR = Form(LanguageOCR.Farsi.value),
+):
+    try:
+        content = base64.b64decode(base64_pdf)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+
+    with tempfile.NamedTemporaryFile(
+        delete=True, suffix=".pdf",
+    ) as tmp:
+        tmp.write(content)
+        tmp.flush()
+
+        extractor = OCRExtractor(file_path=tmp.name)
+        results = extractor.extract_text(
+            max_workers=max_workers,
+            lang=language.value,
+            eng_numbering=eng_numbering,
+        )
+
+        response = {
+            "source": "base64 input",
+            "pages": results,
+        }
 
     return JSONResponse(content=response)

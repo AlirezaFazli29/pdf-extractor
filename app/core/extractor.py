@@ -1,7 +1,12 @@
 import fitz
 import base64
+import pytesseract
+from .utils import (
+    digits_to_latin,
+    normalize_digits_and_fix_order,
+)
 from PyPDF2 import PdfReader
-from .utils import normalize_digits_and_fix_order
+from pdf2image import convert_from_path
 from concurrent.futures import ProcessPoolExecutor
 
 
@@ -200,3 +205,64 @@ class PyPDFExtractor:
             reader = PdfReader(file)
             metadata = reader.metadata            
         return metadata
+
+
+class OCRExtractor:
+    def __init__(
+            self,
+            file_path: str,
+    ):
+        self.file_path = file_path
+        with open(file_path, "rb") as file:
+            reader = PdfReader(file)
+            self.page_count = len(reader.pages)
+            del reader
+
+    @staticmethod
+    def _extract_text(
+            args,
+    ) -> dict:
+        file_path, pg_num, lang , eng_numbering = args
+        page = convert_from_path(
+            file_path,
+            first_page=pg_num+1,
+            last_page=pg_num+1,
+        )
+        pg_txt = pytesseract.image_to_string(page[0], lang=lang)
+        pg_txt = digits_to_latin(
+            pg_txt
+        ) if eng_numbering else pg_txt
+        return {
+            "page_number": pg_num + 1,
+            "text": pg_txt,
+        }
+    
+    def extract_text(
+            self,
+            max_workers: int = 64,
+            lang: str = "fas",
+            eng_numbering: bool = True,
+    ) -> list[dict]:
+        results = []
+
+        for i in range(0, self.page_count, max_workers):
+            chunk_args = [
+                (self.file_path, j, lang, eng_numbering)
+                for j in range(i, min(i + max_workers, self.page_count))
+            ]
+
+            with ProcessPoolExecutor(
+                max_workers=min(max_workers, len(chunk_args))
+            ) as executor:
+                chunk_results = list(
+                    executor.map(
+                        self._extract_text,
+                        chunk_args,
+                    )
+                )
+
+            results.extend(chunk_results)
+        
+        results.sort(key=lambda x: x["page_number"])
+
+        return results
