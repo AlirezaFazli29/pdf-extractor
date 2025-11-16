@@ -1,3 +1,6 @@
 tika
+PyPDF2
 PyMuPDF
+pdf2image
+pytesseract
 fastapi[standard]
