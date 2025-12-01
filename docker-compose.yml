@@ -22,3 +22,4 @@ services:
   tika-server:
     image: apache/tika:3.2.3.0-full
     container_name: tika-server
+    restart: unless-stopped
