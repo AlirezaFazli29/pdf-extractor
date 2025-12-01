@@ -11,7 +11,17 @@ from ..core.extractor import (
     PyPDFExtractor,
 )
 from fastapi import File, Form
-from .schemas import LanguageOCR
+from .schemas import (
+    LanguageOCR,
+    JsonRequestTextUrl,
+    JsonRequestImageUrl,
+    JsonRequestTikaUrl,
+    JsonRequestOcrUrl,
+    JsonRequestTextBase64,
+    JsonRequestImageBase64,
+    JsonRequestTikaBase64,
+    JsonRequestOcrBase64,
+)
 from ..core.utils import digits_to_latin
 from fastapi.responses import JSONResponse
 from pytesseract import get_tesseract_version
@@ -467,6 +477,214 @@ async def extract_image_base64_mu(
 
 
 @app.post(
+    path="/extract_text_url_json_mu/",
+    tags=[
+        "PyMuPDF",
+    ]
+)
+async def extract_text_url_json_mu(
+    request: JsonRequestTextUrl,
+):
+    url = request.url
+    max_workers = request.max_workers
+    eng_numbering = request.eng_numbering
+    try:
+        async with httpx.AsyncClient(
+            timeout=30.0
+        ) as client:
+            response = await client.get(url)
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Could not fetch file from URL: {response.reason_phrase}",
+                )
+            content = response.content
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Request error: {e}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {e}",
+        )
+    
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+    
+    with tempfile.NamedTemporaryFile(
+        delete=True, suffix=".pdf",
+    ) as tmp:
+        tmp.write(content)
+        tmp.flush()
+
+        extractor = MuExtractor(file_path=tmp.name)
+        results = extractor.extract_text(
+            max_workers=max_workers,
+            eng_numbering=eng_numbering,
+        )
+
+        response = {
+            "source": "url",
+            "metadata": extractor.get_metadata(),
+            "pages": results,
+        }
+
+    return JSONResponse(response)
+
+
+@app.post(
+    path="/extract_image_url_json_mu/",
+    tags=[
+        "PyMuPDF",
+    ]
+)
+async def extract_image_url_json_mu(
+    request: JsonRequestImageUrl,
+):
+    url = request.url
+    max_workers = request.max_workers
+    try:
+        async with httpx.AsyncClient(
+            timeout=30.0
+        ) as client:
+            response = await client.get(url)
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Could not fetch file from URL: {response.reason_phrase}",
+                )
+            content = response.content
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Request error: {e}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {e}",
+        )
+    
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+    
+    with tempfile.NamedTemporaryFile(
+        delete=True, suffix=".pdf",
+    ) as tmp:
+        tmp.write(content)
+        tmp.flush()
+
+        extractor = MuExtractor(file_path=tmp.name)
+        results = extractor.extract_image(max_workers=max_workers)
+
+        response = {
+            "source": "url",
+            "metadata": extractor.get_metadata(),
+            "pages": results,
+        }
+
+    return JSONResponse(response)
+
+
+@app.post(
+    path="/extract_text_base64_json_mu/",
+    tags=[
+        "PyMuPDF",
+    ]
+)
+async def extract_text_base64_json_mu(
+    request: JsonRequestTextBase64,
+):
+    base64_pdf = request.base64_pdf
+    max_workers = request.max_workers
+    eng_numbering = request.eng_numbering
+    try:
+        content = base64.b64decode(base64_pdf)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+
+    with tempfile.NamedTemporaryFile(
+        delete=True, suffix=".pdf",
+    ) as tmp:
+        tmp.write(content)
+        tmp.flush()
+
+        extractor = MuExtractor(file_path=tmp.name)
+        results = extractor.extract_text(
+            max_workers=max_workers,
+            eng_numbering=eng_numbering,
+        )
+
+        response = {
+            "source": "base64 input",
+            "metadata": extractor.get_metadata(),
+            "pages": results,
+        }
+
+    return JSONResponse(content=response)
+
+
+@app.post(
+    path="/extract_image_base64_json_mu/",
+    tags=[
+        "PyMuPDF",
+    ]
+)
+async def extract_image_base64_json_mu(
+    request: JsonRequestImageBase64,
+):
+    base64_pdf = request.base64_pdf
+    max_workers = request.max_workers
+    try:
+        content = base64.b64decode(base64_pdf)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+
+    with tempfile.NamedTemporaryFile(
+        delete=True, suffix=".pdf",
+    ) as tmp:
+        tmp.write(content)
+        tmp.flush()
+
+        extractor = MuExtractor(file_path=tmp.name)
+        results = extractor.extract_image(max_workers=max_workers)
+
+        response = {
+            "source": "base64 input",
+            "metadata": extractor.get_metadata(),
+            "pages": results,
+        }
+
+    return JSONResponse(content=response)
+
+
+@app.post(
     path="/extract_text_pypdf/",
     tags=[
         "PyPDF2",
@@ -619,6 +837,114 @@ async def extract_text_base64_pypdf(
 
 
 @app.post(
+    path="/extract_text_url_json_pypdf/",
+    tags=[
+        "PyPDF2",
+    ]
+)
+async def extract_text_url_json_pypdf(
+    request: JsonRequestTextUrl,
+):
+    url = request.url
+    max_workers = request.max_workers
+    eng_numbering = request.eng_numbering
+    try:
+        async with httpx.AsyncClient(
+            timeout=30.0
+        ) as client:
+            response = await client.get(url)
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Could not fetch file from URL: {response.reason_phrase}",
+                )
+            content = response.content
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Request error: {e}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {e}",
+        )
+    
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+    
+    with tempfile.NamedTemporaryFile(
+        delete=True, suffix=".pdf",
+    ) as tmp:
+        tmp.write(content)
+        tmp.flush()
+
+        extractor = PyPDFExtractor(file_path=tmp.name)
+        results = extractor.extract_text(
+            max_workers=max_workers,
+            eng_numbering=eng_numbering,
+        )
+
+        response = {
+            "source": "url",
+            "metadata": extractor.get_metadata(),
+            "pages": results,
+        }
+
+    return JSONResponse(response)
+
+
+@app.post(
+    path="/extract_text_base64_json_pypdf/",
+    tags=[
+        "PyPDF2",
+    ]
+)
+async def extract_text_base64_json_pypdf(
+    request: JsonRequestTextBase64,
+):
+    base64_pdf = request.base64_pdf
+    max_workers = request.max_workers
+    eng_numbering = request.eng_numbering
+    try:
+        content = base64.b64decode(base64_pdf)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+
+    with tempfile.NamedTemporaryFile(
+        delete=True, suffix=".pdf",
+    ) as tmp:
+        tmp.write(content)
+        tmp.flush()
+
+        extractor = PyPDFExtractor(file_path=tmp.name)
+        results = extractor.extract_text(
+            max_workers=max_workers,
+            eng_numbering=eng_numbering,
+        )
+
+        response = {
+            "source": "base64 input",
+            "metadata": extractor.get_metadata(),
+            "pages": results,
+        }
+
+    return JSONResponse(content=response)
+
+
+@app.post(
     path="/extract_text_tika/",
     tags=[
         "Apache Tika",
@@ -717,6 +1043,94 @@ async def extract_text_base64_tika(
     base64_pdf: str = Form(...),
     eng_numbering: bool = Form(False),
 ):
+    try:
+        content = base64.b64decode(base64_pdf)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+
+    parsed_doc = parser.from_buffer(
+        content,
+        serverEndpoint=TIKA_URL,
+    )
+
+    content = digits_to_latin(
+        parsed_doc.get("content")
+    ) if eng_numbering else parsed_doc.get("content")
+
+    response = {
+        "source": "uploaded file",
+        "metadata": parsed_doc.get("metadata"),
+        "content": content,
+    }
+
+    return JSONResponse(content=response)
+
+
+@app.post(
+    path="/extract_text_url_json_tika/",
+    tags=[
+        "Apache Tika",
+    ]
+)
+async def extract_text_url_json_tika(
+    request: JsonRequestTikaUrl,
+):
+    url = request.url
+    eng_numbering = request.eng_numbering
+    try:
+        async with httpx.AsyncClient(
+            timeout=30.0
+        ) as client:
+            response = await client.get(url)
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Could not fetch file from URL: {response.reason_phrase}",
+                )
+            content = response.content
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Request error: {e}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {e}",
+        )
+    
+    parsed_doc = parser.from_buffer(
+        content,
+        serverEndpoint=TIKA_URL,
+    )
+
+    content = digits_to_latin(
+        parsed_doc.get("content")
+    ) if eng_numbering else parsed_doc.get("content")
+
+    response = {
+        "source": "uploaded file",
+        "metadata": parsed_doc.get("metadata"),
+        "content": content,
+    }
+
+    return JSONResponse(response)
+
+
+@app.post(
+    path="/extract_text_base64_json_tika/",
+    tags=[
+        "Apache Tika",
+    ]
+)
+async def extract_text_base64_json_tika(
+    request: JsonRequestTikaBase64,
+):
+    base64_pdf = request.base64_pdf
+    eng_numbering = request.eng_numbering
     try:
         content = base64.b64decode(base64_pdf)
     except Exception as e:
@@ -887,6 +1301,116 @@ async def extract_text_base64_tesseract(
         results = extractor.extract_text(
             max_workers=max_workers,
             lang=language.value,
+            eng_numbering=eng_numbering,
+        )
+
+        response = {
+            "source": "base64 input",
+            "pages": results,
+        }
+
+    return JSONResponse(content=response)
+
+
+@app.post(
+    path="/extract_text_url_json_tesseract/",
+    tags=[
+        "Tesseract OCR",
+    ]
+)
+async def extract_text_url_json_tesseract(
+    request: JsonRequestOcrUrl,
+):
+    url = request.url
+    language = request.language
+    max_workers = request.max_workers
+    eng_numbering = request.eng_numbering
+    try:
+        async with httpx.AsyncClient(
+            timeout=30.0
+        ) as client:
+            response = await client.get(url)
+            if response.status_code != 200:
+                raise HTTPException(
+                    status_code=response.status_code,
+                    detail=f"Could not fetch file from URL: {response.reason_phrase}",
+                )
+            content = response.content
+    except httpx.RequestError as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Request error: {e}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected error: {e}",
+        )
+    
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+    
+    with tempfile.NamedTemporaryFile(
+        delete=True, suffix=".pdf",
+    ) as tmp:
+        tmp.write(content)
+        tmp.flush()
+
+        extractor = OCRExtractor(file_path=tmp.name)
+        results = extractor.extract_text(
+            max_workers=max_workers,
+            lang=language,
+            eng_numbering=eng_numbering,
+        )
+
+        response = {
+            "source": "url",
+            "pages": results,
+        }
+
+    return JSONResponse(response)
+
+
+@app.post(
+    path="/extract_text_base64_json_tesseract/",
+    tags=[
+        "Tesseract OCR",
+    ]
+)
+async def extract_text_base64_json_tesseract(
+    request: JsonRequestOcrBase64,
+):
+    base64_pdf = request.base64_pdf
+    language = request.language
+    max_workers = request.max_workers
+    eng_numbering = request.eng_numbering
+    try:
+        content = base64.b64decode(base64_pdf)
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+
+    if not content.startswith(b"%PDF"):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid PDF file",
+        )
+
+    with tempfile.NamedTemporaryFile(
+        delete=True, suffix=".pdf",
+    ) as tmp:
+        tmp.write(content)
+        tmp.flush()
+
+        extractor = OCRExtractor(file_path=tmp.name)
+        results = extractor.extract_text(
+            max_workers=max_workers,
+            lang=language,
             eng_numbering=eng_numbering,
         )
 
