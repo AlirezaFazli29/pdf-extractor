@@ -11,10 +11,18 @@ class LanguageOCR(Enum):
     Farsi = "fas"
 
 
+class OCROption(Enum):
+    NoOcr = "no_ocr"
+    TryOcr = "try_ocr"
+    ForceOcr = "force_ocr"
+
+
 class JsonRequestTextUrl(BaseModel):
     url: str
     max_workers: int = 32
     eng_numbering: bool = False
+    ocr_mode: str = "no_ocr"
+    ocr_language: str = "fas"
 
 
 class JsonRequestImageUrl(BaseModel):
@@ -38,6 +46,8 @@ class JsonRequestTextBase64(BaseModel):
     base64_pdf: str
     max_workers: int = 32
     eng_numbering: bool = False
+    ocr_mode: str = "no_ocr"
+    ocr_language: str = "fas"
 
 
 class JsonRequestImageBase64(BaseModel):

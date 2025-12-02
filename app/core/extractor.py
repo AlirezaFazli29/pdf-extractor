@@ -24,13 +24,23 @@ class MuExtractor:
     def _extract_text(
             args,
     ) -> dict:
-        file_path, pg_num, eng_numbering = args
+        file_path, pg_num, try_ocr, lang, eng_numbering = args
         with fitz.open(file_path) as doc:
             pg_txt = doc.get_page_text(pg_num)
             pg_txt = normalize_digits_and_fix_order(
                 text=pg_txt,
                 eng_numbering=eng_numbering
             )
+            if try_ocr and not pg_txt:
+                page = convert_from_path(
+                    file_path,
+                    first_page=pg_num+1,
+                    last_page=pg_num+1,
+                )
+                pg_txt = pytesseract.image_to_string(page[0], lang=lang)
+                pg_txt = digits_to_latin(
+                    pg_txt
+                ) if eng_numbering else pg_txt
         return {
             "page_number": pg_num + 1,
             "text": pg_txt
@@ -79,12 +89,14 @@ class MuExtractor:
             self,
             max_workers: int = 64,
             eng_numbering: bool = True,
+            try_ocr: bool = False,
+            ocr_language: str = "fas"
     ) -> list[dict]:
         results = []
 
         for i in range(0, self.page_count, max_workers):
             chunk_args = [
-                (self.file_path, j, eng_numbering)
+                (self.file_path, j, try_ocr, ocr_language, eng_numbering)
                 for j in range(i, min(i + max_workers, self.page_count))
             ]
 
@@ -155,7 +167,7 @@ class PyPDFExtractor:
     def _extract_text(
             args,
     ) -> dict:
-        file_path, pg_num, eng_numbering = args
+        file_path, pg_num, try_ocr, lang, eng_numbering = args
         with open(file_path, "rb") as file:
             reader = PdfReader(file)
             page = reader.pages[pg_num]
@@ -164,6 +176,16 @@ class PyPDFExtractor:
                 text=pg_txt,
                 eng_numbering=eng_numbering,
             )
+            if try_ocr and not pg_txt:
+                page = convert_from_path(
+                    file_path,
+                    first_page=pg_num+1,
+                    last_page=pg_num+1,
+                )
+                pg_txt = pytesseract.image_to_string(page[0], lang=lang)
+                pg_txt = digits_to_latin(
+                    pg_txt
+                ) if eng_numbering else pg_txt
         return {
             "page_number": pg_num + 1,
             "text": pg_txt
@@ -173,12 +195,14 @@ class PyPDFExtractor:
             self,
             max_workers: int = 64,
             eng_numbering: bool = True,
+            try_ocr: bool = False,
+            ocr_language: str = "fas"
     ) -> list[dict]:
         results = []
 
         for i in range(0, self.page_count, max_workers):
             chunk_args = [
-                (self.file_path, j, eng_numbering)
+                (self.file_path, j, try_ocr, ocr_language, eng_numbering)
                 for j in range(i, min(i + max_workers, self.page_count))
             ]
 

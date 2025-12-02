@@ -12,6 +12,7 @@ from ..core.extractor import (
 )
 from fastapi import File, Form
 from .schemas import (
+    OCROption,
     LanguageOCR,
     JsonRequestTextUrl,
     JsonRequestImageUrl,
@@ -193,13 +194,14 @@ async def extract_text_mu(
     file: UploadFile = File(...),
     max_workers: int = Form(32),
     eng_numbering: bool = Form(False),
+    ocr_mode : OCROption = Form(OCROption.NoOcr),
+    ocr_language: LanguageOCR = Form(LanguageOCR.Farsi),
 ):
     if file.content_type != "application/pdf":
         raise HTTPException(
             status_code=400,
             detail="Invalid file type. Only PDF file allowed."
         )
-
     
     with tempfile.NamedTemporaryFile(
         delete=True, suffix=".pdf",
@@ -216,10 +218,24 @@ async def extract_text_mu(
         tmp.flush()
 
         extractor = MuExtractor(file_path=tmp.name)
-        results = extractor.extract_text(
-            max_workers=max_workers,
-            eng_numbering=eng_numbering,
-        )
+
+        match ocr_mode:
+            case OCROption.ForceOcr:
+                ocr_extractor = OCRExtractor(file_path=tmp.name)
+                results = ocr_extractor.extract_text(
+                    max_workers=max_workers,
+                    lang=ocr_language.value,
+                    eng_numbering=eng_numbering,
+                )
+
+            case _:
+                try_ocr = (ocr_mode==OCROption.TryOcr)
+                results = extractor.extract_text(
+                    max_workers=max_workers,
+                    eng_numbering=eng_numbering,
+                    try_ocr=try_ocr,
+                    ocr_language=ocr_language.value,
+                )
 
         response = {
             "source": "uploaded file",
@@ -282,6 +298,8 @@ async def extract_text_url_mu(
     url: str = Form(...),
     max_workers: int = Form(32),
     eng_numbering: bool = Form(False),
+    ocr_mode : OCROption = Form(OCROption.NoOcr),
+    ocr_language: LanguageOCR = Form(LanguageOCR.Farsi),
 ):
     try:
         async with httpx.AsyncClient(
@@ -318,10 +336,24 @@ async def extract_text_url_mu(
         tmp.flush()
 
         extractor = MuExtractor(file_path=tmp.name)
-        results = extractor.extract_text(
-            max_workers=max_workers,
-            eng_numbering=eng_numbering,
-        )
+
+        match ocr_mode:
+            case OCROption.ForceOcr:
+                ocr_extractor = OCRExtractor(file_path=tmp.name)
+                results = ocr_extractor.extract_text(
+                    max_workers=max_workers,
+                    lang=ocr_language.value,
+                    eng_numbering=eng_numbering,
+                )
+
+            case _:
+                try_ocr = (ocr_mode==OCROption.TryOcr)
+                results = extractor.extract_text(
+                    max_workers=max_workers,
+                    eng_numbering=eng_numbering,
+                    try_ocr=try_ocr,
+                    ocr_language=ocr_language.value,
+                )
 
         response = {
             "source": "url",
@@ -398,6 +430,8 @@ async def extract_text_base64_mu(
     base64_pdf: str = Form(...),
     max_workers: int = Form(32),
     eng_numbering: bool = Form(False),
+    ocr_mode : OCROption = Form(OCROption.NoOcr),
+    ocr_language: LanguageOCR = Form(LanguageOCR.Farsi),
 ):
     try:
         content = base64.b64decode(base64_pdf)
@@ -420,10 +454,24 @@ async def extract_text_base64_mu(
         tmp.flush()
 
         extractor = MuExtractor(file_path=tmp.name)
-        results = extractor.extract_text(
-            max_workers=max_workers,
-            eng_numbering=eng_numbering,
-        )
+
+        match ocr_mode:
+            case OCROption.ForceOcr:
+                ocr_extractor = OCRExtractor(file_path=tmp.name)
+                results = ocr_extractor.extract_text(
+                    max_workers=max_workers,
+                    lang=ocr_language.value,
+                    eng_numbering=eng_numbering,
+                )
+
+            case _:
+                try_ocr = (ocr_mode==OCROption.TryOcr)
+                results = extractor.extract_text(
+                    max_workers=max_workers,
+                    eng_numbering=eng_numbering,
+                    try_ocr=try_ocr,
+                    ocr_language=ocr_language.value,
+                )
 
         response = {
             "source": "base64 input",
@@ -488,6 +536,33 @@ async def extract_text_url_json_mu(
     url = request.url
     max_workers = request.max_workers
     eng_numbering = request.eng_numbering
+    ocr_mode = request.ocr_mode
+    ocr_language = request.ocr_language
+
+    allowed_ocr_modes = {item.value for item in OCROption}
+    try:
+        OCROption(ocr_mode)
+    except:
+        raise HTTPException(
+                status_code=422,
+                detail={
+                    "invalid ocr mode entry": ocr_mode,
+                    "allowed modes": sorted(allowed_ocr_modes),
+                },
+            )
+
+    allowed_langs = {item.value for item in LanguageOCR}
+    try:
+        LanguageOCR(ocr_language)
+    except:
+        raise HTTPException(
+                status_code=422,
+                detail={
+                    "invalid language entry": ocr_language,
+                    "allowed languages": sorted(allowed_langs),
+                },
+            )
+
     try:
         async with httpx.AsyncClient(
             timeout=30.0
@@ -523,10 +598,24 @@ async def extract_text_url_json_mu(
         tmp.flush()
 
         extractor = MuExtractor(file_path=tmp.name)
-        results = extractor.extract_text(
-            max_workers=max_workers,
-            eng_numbering=eng_numbering,
-        )
+
+        match ocr_mode:
+            case OCROption.ForceOcr.value:
+                ocr_extractor = OCRExtractor(file_path=tmp.name)
+                results = ocr_extractor.extract_text(
+                    max_workers=max_workers,
+                    lang=ocr_language,
+                    eng_numbering=eng_numbering,
+                )
+
+            case _:
+                try_ocr = (ocr_mode==OCROption.TryOcr.value)
+                results = extractor.extract_text(
+                    max_workers=max_workers,
+                    eng_numbering=eng_numbering,
+                    try_ocr=try_ocr,
+                    ocr_language=ocr_language,
+                )
 
         response = {
             "source": "url",
@@ -606,6 +695,33 @@ async def extract_text_base64_json_mu(
     base64_pdf = request.base64_pdf
     max_workers = request.max_workers
     eng_numbering = request.eng_numbering
+    ocr_mode = request.ocr_mode
+    ocr_language = request.ocr_language
+
+    allowed_ocr_modes = {item.value for item in OCROption}
+    try:
+        OCROption(ocr_mode)
+    except:
+        raise HTTPException(
+                status_code=422,
+                detail={
+                    "invalid ocr mode entry": ocr_mode,
+                    "allowed modes": sorted(allowed_ocr_modes),
+                },
+            )
+
+    allowed_langs = {item.value for item in LanguageOCR}
+    try:
+        LanguageOCR(ocr_language)
+    except:
+        raise HTTPException(
+                status_code=422,
+                detail={
+                    "invalid language entry": ocr_language,
+                    "allowed languages": sorted(allowed_langs),
+                },
+            )
+    
     try:
         content = base64.b64decode(base64_pdf)
     except Exception as e:
@@ -627,10 +743,24 @@ async def extract_text_base64_json_mu(
         tmp.flush()
 
         extractor = MuExtractor(file_path=tmp.name)
-        results = extractor.extract_text(
-            max_workers=max_workers,
-            eng_numbering=eng_numbering,
-        )
+
+        match ocr_mode:
+            case OCROption.ForceOcr.value:
+                ocr_extractor = OCRExtractor(file_path=tmp.name)
+                results = ocr_extractor.extract_text(
+                    max_workers=max_workers,
+                    lang=ocr_language,
+                    eng_numbering=eng_numbering,
+                )
+
+            case _:
+                try_ocr = (ocr_mode==OCROption.TryOcr.value)
+                results = extractor.extract_text(
+                    max_workers=max_workers,
+                    eng_numbering=eng_numbering,
+                    try_ocr=try_ocr,
+                    ocr_language=ocr_language,
+                )
 
         response = {
             "source": "base64 input",
@@ -694,6 +824,8 @@ async def extract_text_pypdf(
     file: UploadFile = File(...),
     max_workers: int = Form(32),
     eng_numbering: bool = Form(False),
+    ocr_mode : OCROption = Form(OCROption.NoOcr),
+    ocr_language: LanguageOCR = Form(LanguageOCR.Farsi),
 ):
     if file.content_type != "application/pdf":
         raise HTTPException(
@@ -716,10 +848,24 @@ async def extract_text_pypdf(
         tmp.flush()
 
         extractor = PyPDFExtractor(file_path=tmp.name)
-        results = extractor.extract_text(
-            max_workers=max_workers,
-            eng_numbering=eng_numbering,
-        )
+
+        match ocr_mode:
+            case OCROption.ForceOcr:
+                ocr_extractor = OCRExtractor(file_path=tmp.name)
+                results = ocr_extractor.extract_text(
+                    max_workers=max_workers,
+                    lang=ocr_language.value,
+                    eng_numbering=eng_numbering,
+                )
+
+            case _:
+                try_ocr = (ocr_mode==OCROption.TryOcr)
+                results = extractor.extract_text(
+                    max_workers=max_workers,
+                    eng_numbering=eng_numbering,
+                    try_ocr=try_ocr,
+                    ocr_language=ocr_language.value,
+                )
 
         response = {
             "source": "uploaded file",
@@ -740,6 +886,8 @@ async def extract_text_url_pypdf(
     url: str = Form(...),
     max_workers: int = Form(32),
     eng_numbering: bool = Form(False),
+    ocr_mode : OCROption = Form(OCROption.NoOcr),
+    ocr_language: LanguageOCR = Form(LanguageOCR.Farsi),
 ):
     try:
         async with httpx.AsyncClient(
@@ -776,10 +924,24 @@ async def extract_text_url_pypdf(
         tmp.flush()
 
         extractor = PyPDFExtractor(file_path=tmp.name)
-        results = extractor.extract_text(
-            max_workers=max_workers,
-            eng_numbering=eng_numbering,
-        )
+
+        match ocr_mode:
+            case OCROption.ForceOcr:
+                ocr_extractor = OCRExtractor(file_path=tmp.name)
+                results = ocr_extractor.extract_text(
+                    max_workers=max_workers,
+                    lang=ocr_language.value,
+                    eng_numbering=eng_numbering,
+                )
+
+            case _:
+                try_ocr = (ocr_mode==OCROption.TryOcr)
+                results = extractor.extract_text(
+                    max_workers=max_workers,
+                    eng_numbering=eng_numbering,
+                    try_ocr=try_ocr,
+                    ocr_language=ocr_language.value,
+                )
 
         response = {
             "source": "url",
@@ -800,6 +962,8 @@ async def extract_text_base64_pypdf(
     base64_pdf: str = Form(...),
     max_workers: int = Form(32),
     eng_numbering: bool = Form(False),
+    ocr_mode : OCROption = Form(OCROption.NoOcr),
+    ocr_language: LanguageOCR = Form(LanguageOCR.Farsi),
 ):
     try:
         content = base64.b64decode(base64_pdf)
@@ -822,10 +986,24 @@ async def extract_text_base64_pypdf(
         tmp.flush()
 
         extractor = PyPDFExtractor(file_path=tmp.name)
-        results = extractor.extract_text(
-            max_workers=max_workers,
-            eng_numbering=eng_numbering,
-        )
+
+        match ocr_mode:
+            case OCROption.ForceOcr:
+                ocr_extractor = OCRExtractor(file_path=tmp.name)
+                results = ocr_extractor.extract_text(
+                    max_workers=max_workers,
+                    lang=ocr_language.value,
+                    eng_numbering=eng_numbering,
+                )
+
+            case _:
+                try_ocr = (ocr_mode==OCROption.TryOcr)
+                results = extractor.extract_text(
+                    max_workers=max_workers,
+                    eng_numbering=eng_numbering,
+                    try_ocr=try_ocr,
+                    ocr_language=ocr_language.value,
+                )
 
         response = {
             "source": "base64 input",
@@ -848,6 +1026,33 @@ async def extract_text_url_json_pypdf(
     url = request.url
     max_workers = request.max_workers
     eng_numbering = request.eng_numbering
+    ocr_mode = request.ocr_mode
+    ocr_language = request.ocr_language
+
+    allowed_ocr_modes = {item.value for item in OCROption}
+    try:
+        OCROption(ocr_mode)
+    except:
+        raise HTTPException(
+                status_code=422,
+                detail={
+                    "invalid ocr mode entry": ocr_mode,
+                    "allowed modes": sorted(allowed_ocr_modes),
+                },
+            )
+
+    allowed_langs = {item.value for item in LanguageOCR}
+    try:
+        LanguageOCR(ocr_language)
+    except:
+        raise HTTPException(
+                status_code=422,
+                detail={
+                    "invalid language entry": ocr_language,
+                    "allowed languages": sorted(allowed_langs),
+                },
+            )
+
     try:
         async with httpx.AsyncClient(
             timeout=30.0
@@ -883,10 +1088,24 @@ async def extract_text_url_json_pypdf(
         tmp.flush()
 
         extractor = PyPDFExtractor(file_path=tmp.name)
-        results = extractor.extract_text(
-            max_workers=max_workers,
-            eng_numbering=eng_numbering,
-        )
+        
+        match ocr_mode:
+            case OCROption.ForceOcr.value:
+                ocr_extractor = OCRExtractor(file_path=tmp.name)
+                results = ocr_extractor.extract_text(
+                    max_workers=max_workers,
+                    lang=ocr_language,
+                    eng_numbering=eng_numbering,
+                )
+
+            case _:
+                try_ocr = (ocr_mode==OCROption.TryOcr.value)
+                results = extractor.extract_text(
+                    max_workers=max_workers,
+                    eng_numbering=eng_numbering,
+                    try_ocr=try_ocr,
+                    ocr_language=ocr_language,
+                )
 
         response = {
             "source": "url",
@@ -909,6 +1128,33 @@ async def extract_text_base64_json_pypdf(
     base64_pdf = request.base64_pdf
     max_workers = request.max_workers
     eng_numbering = request.eng_numbering
+    ocr_mode = request.ocr_mode
+    ocr_language = request.ocr_language
+
+    allowed_ocr_modes = {item.value for item in OCROption}
+    try:
+        OCROption(ocr_mode)
+    except:
+        raise HTTPException(
+                status_code=422,
+                detail={
+                    "invalid ocr mode entry": ocr_mode,
+                    "allowed modes": sorted(allowed_ocr_modes),
+                },
+            )
+
+    allowed_langs = {item.value for item in LanguageOCR}
+    try:
+        LanguageOCR(ocr_language)
+    except:
+        raise HTTPException(
+                status_code=422,
+                detail={
+                    "invalid language entry": ocr_language,
+                    "allowed languages": sorted(allowed_langs),
+                },
+            )
+    
     try:
         content = base64.b64decode(base64_pdf)
     except Exception as e:
@@ -930,10 +1176,24 @@ async def extract_text_base64_json_pypdf(
         tmp.flush()
 
         extractor = PyPDFExtractor(file_path=tmp.name)
-        results = extractor.extract_text(
-            max_workers=max_workers,
-            eng_numbering=eng_numbering,
-        )
+        
+        match ocr_mode:
+            case OCROption.ForceOcr.value:
+                ocr_extractor = OCRExtractor(file_path=tmp.name)
+                results = ocr_extractor.extract_text(
+                    max_workers=max_workers,
+                    lang=ocr_language,
+                    eng_numbering=eng_numbering,
+                )
+
+            case _:
+                try_ocr = (ocr_mode==OCROption.TryOcr.value)
+                results = extractor.extract_text(
+                    max_workers=max_workers,
+                    eng_numbering=eng_numbering,
+                    try_ocr=try_ocr,
+                    ocr_language=ocr_language,
+                )
 
         response = {
             "source": "base64 input",
@@ -1167,7 +1427,7 @@ async def extract_text_tesseract(
     file: UploadFile = File(...),
     max_workers: int = Form(32),
     eng_numbering: bool = Form(False),
-    language: LanguageOCR = Form(LanguageOCR.Farsi.value),
+    language: LanguageOCR = Form(LanguageOCR.Farsi),
 ):
     if file.content_type != "application/pdf":
         raise HTTPException(
@@ -1325,6 +1585,19 @@ async def extract_text_url_json_tesseract(
     language = request.language
     max_workers = request.max_workers
     eng_numbering = request.eng_numbering
+    
+    allowed_langs = {item.value for item in LanguageOCR}
+    try:
+        LanguageOCR(language)
+    except:
+        raise HTTPException(
+                status_code=422,
+                detail={
+                    "invalid language entry": language,
+                    "allowed languages": sorted(allowed_langs),
+                },
+            )
+        
     try:
         async with httpx.AsyncClient(
             timeout=30.0
@@ -1387,6 +1660,19 @@ async def extract_text_base64_json_tesseract(
     language = request.language
     max_workers = request.max_workers
     eng_numbering = request.eng_numbering
+
+    allowed_langs = {item.value for item in LanguageOCR}
+    try:
+        LanguageOCR(language)
+    except:
+        raise HTTPException(
+                status_code=422,
+                detail={
+                    "invalid language entry": language,
+                    "allowed languages": sorted(allowed_langs),
+                },
+            )
+    
     try:
         content = base64.b64decode(base64_pdf)
     except Exception as e:
